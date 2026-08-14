@@ -178,30 +178,50 @@ async function validateVercelToken(token: string): Promise<{ projectId: string; 
 }
 
 async function validateQStashToken(token: string): Promise<void> {
-  // Detecta região via JWT (mesmo padrão de /api/installer/qstash/validate)
-  let qstashBaseUrl = 'https://qstash.upstash.io';
+  // O host us-east-1 é o mesmo que /api/installer/qstash/validate usa, e é o que decide se o
+  // wizard mostra "token válido" na etapa 4. Ele vem primeiro justamente para o provision não
+  // reprovar um token que o wizard acabou de aprovar.
+  const baseUrls = ['https://qstash-us-east-1.upstash.io'];
+
+  // O `iss` do JWT entra como alternativa, para quem tem QStash em outra região.
   try {
     const payloadB64 = token.split('.')[1];
     if (payloadB64) {
       const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
-      if (payload.iss && typeof payload.iss === 'string') {
-        qstashBaseUrl = payload.iss.replace(/\/$/, '');
+      if (typeof payload.iss === 'string' && /^https?:\/\//.test(payload.iss)) {
+        const issuer = payload.iss.replace(/\/$/, '');
+        if (!baseUrls.includes(issuer)) baseUrls.push(issuer);
       }
     }
   } catch {
-    // JWT indecodificável: usa fallback genérico
+    // JWT indecodificável: segue só com o host padrão
   }
+  baseUrls.push('https://qstash.upstash.io');
 
-  const res = await fetchWithTimeout(`${qstashBaseUrl}/v2/schedules`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  let ultimaFalha = '';
 
-  if (!res.ok) {
+  for (const baseUrl of baseUrls) {
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(`${baseUrl}/v2/schedules`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (e) {
+      ultimaFalha = `${baseUrl}: ${e instanceof Error ? e.message : 'falha de rede'}`;
+      continue;
+    }
+
+    if (res.ok) return;
+
     if (res.status === 401 || res.status === 403) {
       throw new Error('Token QStash inválido. Copie o QSTASH_TOKEN do console Upstash → QStash → Details.');
     }
-    throw new Error('Erro ao validar token QStash');
+
+    const corpo = await res.text().catch(() => '');
+    ultimaFalha = `${baseUrl}: HTTP ${res.status} ${corpo.slice(0, 120)}`.trim();
   }
+
+  throw new Error(`Erro ao validar token QStash — ${ultimaFalha}`);
 }
 
 async function validateRedisCredentials(url: string, token: string): Promise<void> {
