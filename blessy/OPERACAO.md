@@ -46,14 +46,20 @@ Isso não é contorno, é a postura certa por três motivos:
 
 ## Custo por instância
 
-O wizard provisiona Supabase e Upstash automaticamente na conta de quem instala. O que precisa ser
-conferido antes de fechar preço com cliente, porque muda e eu não confirmei na fonte:
+O wizard provisiona Supabase e Upstash automaticamente na conta de quem instala. Os três limites que
+estavam em aberto foram confirmados na fonte em 14/08/2026:
 
-- **Limite de projetos gratuitos do Supabase por organização.** Se for baixo, cada cliente precisa da
-  própria organização (grátis) ou plano pago. Conferir antes do 3º cliente.
-- **Limites do free tier do Upstash** (QStash e Redis). Campanha grande consome fila rápido.
-- **Uso comercial no plano Hobby da Vercel.** Deploy que atende cliente pagante normalmente exige
-  plano pago. Conferir os termos antes de subir a primeira instância de cliente.
+- **Supabase Free: 2 projetos ativos por organização**, e **projeto free é pausado após 7 dias sem
+  atividade**. Duas consequências: a partir do 3º cliente é organização nova (grátis) ou Pro; e
+  instância de cliente que fica uma semana sem campanha **acorda com o banco pausado**. Para cliente
+  pagante, o banco é Pro — não é opcional.
+- **Upstash Free: Redis com 1 banco, 500 mil comandos/mês, 256 MB e 10 GB de banda; QStash com 1.000
+  mensagens/dia.** Retry conta como mensagem nova. O teto de 1 banco no free significa uma conta
+  Upstash por cliente, não uma conta da Blessy servindo várias instâncias.
+- **Vercel Hobby é explicitamente não-comercial.** A regra de uso justo lista "receber pagamento para
+  criar, atualizar ou hospedar o site" como uso comercial — ou seja, instância de cliente pagante
+  exige Pro. **A conta `matheussbpros-projects` está em Hobby hoje**, com os painéis e páginas de
+  cliente já rodando nela. Resolver antes de subir a primeira instância de cliente.
 
 O que eu confirmei na documentação da Meta em 14/08/2026:
 
@@ -80,6 +86,23 @@ A base já tem as peças (`ContactStatus: OPT_IN | OPT_OUT | UNKNOWN`, tabela `p
    caminho mais rápido pra perder a WABA do cliente.
 5. **Um número por operação.** O número da bridge da Blessy (o 8080, que sustenta os 13 clientes)
    nunca entra nisso. São mundos separados: Cloud API oficial aqui, bridge lá.
+
+## Instância piloto da Blessy (14/08/2026)
+
+Antes de tocar em conta de cliente, a primeira instância é nossa. Estado atual:
+
+| Item | Valor |
+|---|---|
+| Projeto Vercel | `smartzap-blessy` (`prj_L4mVmIqBG8WmGnx4gIaQt6dtIYqW`), time `matheussbpros-projects` |
+| URL | https://smartzap-blessy.vercel.app |
+| Deploy | production READY, feito pelo CLI a partir do local na branch `blessy/operacao` |
+| `/install` | acessível, sem Deployment Protection |
+| `/api/health` | responde `unhealthy` com tudo `not_configured` — estado esperado antes do wizard |
+| Wizard | **pendente** — falta Supabase PAT, QSTASH_TOKEN e as duas credenciais do Redis |
+
+O deploy foi feito pelo CLI, sem conectar o Git. Isso não quebra o wizard: o
+`triggerProjectRedeploy` recria a partir do último deployment de produção, não a partir do repo.
+Conectar ao GitHub depois, quando fizer sentido ter deploy automático por push.
 
 ## Provisionamento de um cliente novo
 
