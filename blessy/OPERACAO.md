@@ -104,6 +104,38 @@ O deploy foi feito pelo CLI, sem conectar o Git. Isso não quebra o wizard: o
 `triggerProjectRedeploy` recria a partir do último deployment de produção, não a partir do repo.
 Conectar ao GitHub depois, quando fizer sentido ter deploy automático por push.
 
+## Armadilhas do wizard, aprendidas na primeira instalação (14/08/2026)
+
+A primeira rodada do `/install` falhou três vezes. O que aconteceu, e o que fazer com isso:
+
+**1. O provision reprovava um token QStash que o próprio wizard tinha aprovado.** A etapa 4 do
+wizard valida em `/api/installer/qstash/validate`, que bate em `qstash-us-east-1.upstash.io`. O
+`validateQStashToken` do provision dizia seguir "o mesmo padrão", mas montava a URL a partir do campo
+`iss` do JWT, com fallback no host global — outro endpoint. Dava "Erro ao validar token QStash" no
+step 6/12, **depois** de já ter criado o projeto Supabase. Corrigido no fork em `a32f90b`: tenta
+us-east-1 primeiro, depois o issuer, e agora o erro carrega status e corpo da resposta.
+
+**2. Cada tentativa cria um projeto Supabase novo, e nunca reusa.** O código é explícito: "SEMPRE
+cria um projeto novo para evitar herdar lixo". Se o nome `smartzap` existe, vira `smartzap-v2`,
+`smartzap-v3`, e assim por diante. Isso não é capricho — a senha do Postgres só existe no momento da
+criação, e sem ela o step 5 não monta a DB URL. **Consequência:** toda falha no meio do provision
+deixa um projeto órfão ocupando uma das duas vagas do free. Antes de tentar de novo, pausar ou
+apagar o órfão.
+
+**3. O provision ignora a organização sugerida.** O preflight calcula `suggestedOrg`, mas o provision
+usa `orgs[0]`. No caso não fez diferença: o limite do free é **por usuário** ("2 project limit" para
+o `MatheusSBPRO`, somando todas as orgs onde ele é admin ou owner), então trocar de organização não
+libera vaga. Organização nova só resolve se o dono for outra pessoa — no nosso caso, o cliente.
+
+**4. O banco nasce em `us-east-1` por causa do plano Hobby.** A região do Supabase é derivada de
+`VERCEL_REGION`, que em Hobby é sempre `iad1`. Com Pro e a função em `gru1`, o banco nasceria em
+`sa-east-1`. É mais um item para a conta do upgrade: hoje toda query do inbox atravessa o Atlântico
+Norte e volta.
+
+Estado dos projetos Supabase depois da limpeza: `smartzap-v2` e `smartzap-v3` pausados (órfãos das
+tentativas falhas, sem migrations aplicadas — podem ser apagados), `nossocrm` pausado, e apenas
+`DASHBOARD BLESSYMIDIAS` ativo.
+
 ## Provisionamento de um cliente novo
 
 Sequência, ainda manual, que o backlog abaixo pretende automatizar:
