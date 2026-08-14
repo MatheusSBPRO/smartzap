@@ -132,9 +132,14 @@ libera vaga. Organização nova só resolve se o dono for outra pessoa — no no
 `sa-east-1`. É mais um item para a conta do upgrade: hoje toda query do inbox atravessa o Atlântico
 Norte e volta.
 
-Estado dos projetos Supabase depois da limpeza: `smartzap-v2` e `smartzap-v3` pausados (órfãos das
-tentativas falhas, sem migrations aplicadas — podem ser apagados), `nossocrm` pausado, e apenas
-`DASHBOARD BLESSYMIDIAS` ativo.
+Estado dos projetos Supabase depois da limpeza (14/08/2026): `smartzap-v2` e `smartzap-v3` **foram
+apagados** — eram órfãos das tentativas falhas, sem migrations aplicadas. Sobraram
+`DASHBOARD BLESSYMIDIAS` (ativo, o único), `nossocrm` (pausado), `LATI E MIA` (pausado) e um
+`SmartZap` (pausado, `sa-east-1`, na organização homônima). Ou seja: **1 vaga ativa livre** para o
+wizard criar o banco da instância.
+
+Como o projeto `SmartZap` pausado ocupa o nome, o próximo provision vai criar `smartzap-v2` de novo —
+a checagem de nome é global no PAT e não diferencia maiúsculas.
 
 ## Provisionamento de um cliente novo
 
