@@ -1,0 +1,134 @@
+# Operação Blessy — SmartZap para infoprodutores
+
+> Documento de adoção. Escrito em 14/08/2026, antes de qualquer adaptação de código.
+> Base: fork de `thaleslaray/smartzap` em `MatheusSBPRO/smartzap`.
+
+## O que foi verificado na base
+
+Antes de decidir qualquer coisa, rodei a base como está:
+
+| Verificação | Resultado |
+|---|---|
+| `npm install` | 1.143 pacotes, 26s, sem erro |
+| `npm run test` | **3.404 testes passando**, 109 arquivos, 2 skipped |
+| `npm run build` | build de produção limpo, sem variável de ambiente configurada |
+| Node | v22.14.0 (Next 16 exige 20.9+) |
+
+A base é sólida e roda desconfigurada de propósito, porque o wizard `/install` precisa subir antes de
+existir banco.
+
+## A decisão de arquitetura: uma instância por cliente
+
+**Verificado, não presumido.** O schema tem 37 tabelas e **nenhuma delas tem coluna de tenant**
+(`tenant_id`, `account_id`, `client_id`). As credenciais do WhatsApp são únicas por instalação, lidas
+de `settings` com fallback em env e cache no Redis. A rota `/api/phone-numbers` lista os números de
+**um** WABA, o da instalação. O `CLAUDE.md` do projeto declara: "Single-tenant: no user accounts".
+
+Ou seja: transformar isso em multi-tenant é reescrever a camada de dados inteira e brigar com todo
+update do upstream. **Não fazemos isso.** Cada infoprodutor ganha a própria instância.
+
+Isso não é contorno, é a postura certa por três motivos:
+
+1. **O número fica no CNPJ do cliente.** WABA, número e histórico são dele. Se a conta dele tomar
+   restrição, não contamina os outros nem a Blessy.
+2. **O custo é dele.** Meta cobra por mensagem entregue, e cobrança de mídia é do anunciante.
+3. **Vazamento entre clientes vira impossível por construção**, não por `WHERE tenant_id = ?`.
+
+## Quem é dono de quê
+
+| Item | Dono | Por quê |
+|---|---|---|
+| WABA + número + token da Meta | **cliente** | é a identidade comercial dele, e o custo por mensagem |
+| Projeto Supabase | cliente (ou Blessy, se ele não tiver) | contém a base de contatos dele |
+| Deploy (Vercel ou VPS) | a definir por cliente | ver seção de custo |
+| Código do fork | Blessy | as adaptações são nossas |
+| Operação (campanha, template, laudo) | Blessy | é o serviço que a gente vende |
+
+## Custo por instância
+
+O wizard provisiona Supabase e Upstash automaticamente na conta de quem instala. O que precisa ser
+conferido antes de fechar preço com cliente, porque muda e eu não confirmei na fonte:
+
+- **Limite de projetos gratuitos do Supabase por organização.** Se for baixo, cada cliente precisa da
+  própria organização (grátis) ou plano pago. Conferir antes do 3º cliente.
+- **Limites do free tier do Upstash** (QStash e Redis). Campanha grande consome fila rápido.
+- **Uso comercial no plano Hobby da Vercel.** Deploy que atende cliente pagante normalmente exige
+  plano pago. Conferir os termos antes de subir a primeira instância de cliente.
+
+O que eu confirmei na documentação da Meta em 14/08/2026:
+
+- Cobrança é **por mensagem entregue**, não mais por conversa, desde 01/07/2025.
+- **Marketing sempre é cobrado.** Utilidade e Autenticação são gratuitas dentro da janela de
+  atendimento. Mensagem livre (não-template) dentro da janela é gratuita.
+- Conversas de **serviço são gratuitas** desde 01/11/2024.
+- A localização de cobrança em BRL para o Brasil entrou em 01/07/2026. O valor exato por mensagem sai
+  do rate card da Meta, que precisa ser baixado por conta. **Não estimar de cabeça na proposta.**
+
+Consequência prática pro produto: campanha de lançamento é categoria Marketing, logo é sempre paga.
+Recuperação de venda dentro de 24h da interação do cliente pode cair em Utilidade e sair de graça. Isso
+muda o preço do serviço e precisa estar na conta antes de vender.
+
+## Regras de conformidade que a gente não negocia
+
+A base já tem as peças (`ContactStatus: OPT_IN | OPT_OUT | UNKNOWN`, tabela `phone_suppressions`,
+`isOptOutError()` mapeando erro da Meta). O que falta é a política escrita:
+
+1. **Nenhum disparo sem opt-in registrado**, com data e origem do consentimento.
+2. **Opt-out em toda campanha de marketing**, e o número entra na supressão na hora, não no dia seguinte.
+3. **Lista comprada não entra.** Nunca. Queima o número do cliente e leva a conta junto.
+4. **Categoria de template correta.** Marcar marketing como utilidade pra fugir de cobrança é o
+   caminho mais rápido pra perder a WABA do cliente.
+5. **Um número por operação.** O número da bridge da Blessy (o 8080, que sustenta os 13 clientes)
+   nunca entra nisso. São mundos separados: Cloud API oficial aqui, bridge lá.
+
+## Provisionamento de um cliente novo
+
+Sequência, ainda manual, que o backlog abaixo pretende automatizar:
+
+1. Cliente cria/entrega o Meta Business com WABA e número verificado.
+2. Fork do nosso fork ou novo deploy a partir dele.
+3. Deploy (Vercel ou VPS) e abrir `/install`.
+4. Wizard provisiona Supabase e Upstash, roda migrações e grava credenciais.
+5. `SETUP_COMPLETE=true` pra blindar as rotas de setup.
+6. Registrar a instância no `registry/clients.json` da operação (ver backlog 1).
+7. Subir os templates e mandar pra aprovação da Meta. Aprovação leva tempo, então é o primeiro passo
+   depois do acesso, não o último.
+
+## Backlog priorizado
+
+**1. Instância no registry da operação.** Hoje `registry/clients.json` amarra cliente → conta de
+anúncio → grupo → painel. Falta cliente → instância SmartZap (URL, WABA, número, data). Sem isso, na
+terceira instância ninguém lembra qual é de quem. É o primeiro item porque é o que evita bagunça
+depois, e é barato.
+
+**2. Painel consolidado das instâncias.** Uma leitura só mostrando entregue/lido/falha por cliente,
+no padrão que já existe em `blessy-paineis`. Cada instância expõe `/api/campaigns/[id]/metrics` e
+`/api/health`, então dá pra ler por API com a `SMARTZAP_API_KEY` de cada uma.
+
+**3. Pré-flight de conformidade antes do disparo.** A base já tem `/api/campaign/precheck`. Estender
+pra travar: contato sem opt-in, categoria de template incompatível com o conteúdo, e ausência de
+opt-out no corpo. Trava, não avisa.
+
+**4. Tom de voz por cliente.** Template tem que soar como o cliente, não como IA e não como o Matheus.
+A régua de `automations/lib/tom-de-voz.md` vale pro Matheus; cada infoprodutor precisa da sua.
+
+**5. Provisionador.** Só depois do terceiro cliente manual, quando o padrão já estiver claro.
+
+## O que NÃO fazer
+
+- **Não reescrever pra multi-tenant.** Briga com todo update do upstream e quebra o isolamento que
+  hoje é de graça.
+- **Não migrar tudo pra VPS agora.** O `output: 'standalone'` deixa a app pronta pra Docker, mas
+  QStash aparece em 27 arquivos e o Realtime do Supabase em 20. Sair da Vercel é trocar dois serviços
+  gerenciados, não trocar hospedagem. Reavaliar quando o custo por instância doer.
+- **Não usar isso pra prospecção fria.** É o jeito mais rápido de perder a WABA de um cliente pagante.
+
+## Sincronizar com o upstream
+
+O fork mantém `upstream` apontando pro repo do Thales, que está parado desde abril de 2026. Adaptação
+nossa vive em branch própria, pra que `git merge upstream/main` continue barato quando ele voltar a
+publicar.
+
+```bash
+git fetch upstream && git merge upstream/main
+```
