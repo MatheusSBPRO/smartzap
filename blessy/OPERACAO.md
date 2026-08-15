@@ -94,11 +94,12 @@ Antes de tocar em conta de cliente, a primeira instância é nossa. Estado atual
 | Item | Valor |
 |---|---|
 | Projeto Vercel | `smartzap-blessy` (`prj_L4mVmIqBG8WmGnx4gIaQt6dtIYqW`), time `matheussbpros-projects` |
-| URL | https://smartzap-blessy.vercel.app |
+| URL | **https://zap.blessymidias.com.br** (e https://smartzap-blessy.vercel.app) |
+| DNS | CNAME `zap` → `cname.vercel-dns.com`, TTL 14400, criado na zona da StayCloud em 15/08/2026 |
 | Deploy | production READY, feito pelo CLI a partir do local na branch `blessy/operacao` |
-| `/install` | acessível, sem Deployment Protection |
-| `/api/health` | responde `unhealthy` com tudo `not_configured` — estado esperado antes do wizard |
-| Wizard | **pendente** — falta Supabase PAT, QSTASH_TOKEN e as duas credenciais do Redis |
+| Wizard | **concluído** em 14/08/2026 — 12 env vars gravadas, `SETUP_COMPLETE` ligado |
+| `/api/health` | `degraded`: `database ok`, `qstash ok`, `whatsapp not_configured` |
+| Login | e-mail e senha definidos no wizard; a Vercel guarda só o hash SHA-256 em `MASTER_PASSWORD` |
 
 O deploy foi feito pelo CLI, sem conectar o Git. Isso não quebra o wizard: o
 `triggerProjectRedeploy` recria a partir do último deployment de produção, não a partir do repo.
